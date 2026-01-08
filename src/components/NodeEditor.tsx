@@ -92,14 +92,26 @@ export function NodeEditor({
             <Zap className="w-4 h-4 text-slate-400" />
             Priority
           </label>
-          <Select
-            value={(node.risk || 'low') as Risk}
-            onChange={(e) => onUpdate((n) => ({ ...n, risk: e.target.value as Risk }))}
-          >
-            <option value="high">● High Priority</option>
-            <option value="medium">● Medium Priority</option>
-            <option value="low">● Low Priority</option>
-          </Select>
+          <div className="relative">
+            <span className={`absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full ${
+              node.risk === 'high' ? 'bg-red-500' : node.risk === 'medium' ? 'bg-amber-500' : 'bg-green-500'
+            }`} />
+            <Select
+              value={(node.risk || 'low') as Risk}
+              onChange={(e) => onUpdate((n) => ({ ...n, risk: e.target.value as Risk }))}
+              className={`pl-8 ${
+                node.risk === 'high' 
+                  ? 'ring-red-300 bg-red-50' 
+                  : node.risk === 'medium' 
+                    ? 'ring-amber-300 bg-amber-50' 
+                    : 'ring-green-300 bg-green-50'
+              }`}
+            >
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </Select>
+          </div>
         </div>
         <div className="space-y-2">
           <label className="text-sm font-bold text-slate-700 flex items-center gap-2">

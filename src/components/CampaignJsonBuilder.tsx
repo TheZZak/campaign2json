@@ -501,7 +501,7 @@ export default function CampaignJsonBuilder() {
               </Button>
             </div>
 
-            <div className="space-y-3 overflow-y-auto flex-1 pr-2 custom-scrollbar">
+            <div className="space-y-3 overflow-y-auto flex-1 px-1 custom-scrollbar">
               {Object.keys(rootNodes).length === 0 ? (
                 <div className="rounded-[1.5rem] border-2 border-dashed border-slate-100 p-12 text-center flex flex-col items-center gap-4">
                   <Inbox className="w-12 h-12 text-slate-300" />

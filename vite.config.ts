@@ -4,10 +4,10 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  base: '/campaign2json/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
 });
-
