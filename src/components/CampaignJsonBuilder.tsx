@@ -9,6 +9,8 @@ import {
   PencilLine,
   Rocket,
   Inbox,
+  X,
+  Layers,
 } from 'lucide-react';
 import type { CampaignNode } from '../types';
 import {
@@ -26,87 +28,182 @@ import { exportCampaign } from '../utils/export';
 import { buildIssues } from '../utils/validation';
 import { makeChoicesBlock, replaceOrAppendChoices } from '../utils/choices';
 import { useToast } from '../hooks';
-import { Button, Input, Pill } from './ui';
+import { Button, Pill } from './ui';
 import { TreeNode } from './TreeNode';
 import { NodeEditor } from './NodeEditor';
 import { OutputPanel } from './OutputPanel';
 import { ImportModal } from './ImportModal';
 import { Toast } from './Toast';
 
-const DEFAULT_CAMPAIGN: Record<string, CampaignNode> = {
-  '1': {
-    message: "We'll process your withdrawal request. A coordinator will contact you within 24 hours.",
-    risk: 'high',
-    needs_followup: true,
-  },
-  '2': {
-    message: "Great! We're glad you're continuing with the course. Good luck, {FirstName}!",
-    risk: 'low',
-    needs_followup: false,
-  },
-  '3': {
-    message: 'No problem, {FirstName}. What would help you decide?',
-    risk: 'medium',
-    needs_followup: true,
-    then: {
-      '1': {
-        message: 'An advisor will contact you shortly to discuss your options.',
-        risk: 'medium',
-        needs_followup: true,
-        _label: 'Talk to advisor',
-      },
-      '2': {
-        message: "We'll send you financial aid information right away.",
-        risk: 'medium',
-        needs_followup: true,
-        _label: 'Financial info',
-      },
-      '3': {
-        message: 'Academic support will reach out to help you succeed.',
-        risk: 'medium',
-        needs_followup: true,
-        _label: 'Academic support',
+const DEFAULT_CAMPAIGNS: Record<string, Record<string, CampaignNode>> = {
+  'F25Withdrawal': {
+    '1': {
+      message: "We'll process your withdrawal request. A coordinator will contact you within 24 hours.",
+      risk: 'high',
+      needs_followup: true,
+    },
+    '2': {
+      message: "Great! We're glad you're continuing with the course. Good luck, {FirstName}!",
+      risk: 'low',
+      needs_followup: false,
+    },
+    '3': {
+      message: 'No problem, {FirstName}. What would help you decide?',
+      risk: 'medium',
+      needs_followup: true,
+      then: {
+        '1': {
+          message: 'An advisor will contact you shortly to discuss your options.',
+          risk: 'medium',
+          needs_followup: true,
+          _label: 'Talk to advisor',
+        },
+        '2': {
+          message: "We'll send you financial aid information right away.",
+          risk: 'medium',
+          needs_followup: true,
+          _label: 'Financial info',
+        },
       },
     },
   },
 };
 
 export default function CampaignJsonBuilder() {
-  const [campaignName, setCampaignName] = useState('F25Withdrawal');
-  const [rootNodes, setRootNodes] = useState<Record<string, CampaignNode>>(() =>
-    deepClone(DEFAULT_CAMPAIGN)
+  const [campaigns, setCampaigns] = useState<Record<string, Record<string, CampaignNode>>>(() =>
+    deepClone(DEFAULT_CAMPAIGNS)
   );
+  const [activeCampaign, setActiveCampaign] = useState('F25Withdrawal');
   const [selectedPath, setSelectedPath] = useState('1');
   const [importOpen, setImportOpen] = useState(false);
+  const [renamingCampaign, setRenamingCampaign] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   const { toast, showToast } = useToast();
+
+  const campaignNames = Object.keys(campaigns);
+  const rootNodes = campaigns[activeCampaign] || {};
 
   const selectedNode = useMemo(() => {
     const p = selectedPath.split('.').filter(Boolean);
     return getNodeAt(rootNodes, p);
   }, [rootNodes, selectedPath]);
 
-  const issues = useMemo(
-    () => buildIssues(campaignName, rootNodes),
-    [campaignName, rootNodes]
-  );
+  const allIssues = useMemo(() => {
+    const result: Record<string, ReturnType<typeof buildIssues>> = {};
+    for (const name of campaignNames) {
+      result[name] = buildIssues(name, campaigns[name]);
+    }
+    return result;
+  }, [campaigns, campaignNames]);
 
-  const exported = useMemo(
-    () => exportCampaign(campaignName, rootNodes),
-    [campaignName, rootNodes]
-  );
+  const issues = allIssues[activeCampaign] || [];
+
+  const exportedAll = useMemo(() => {
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const name of campaignNames) {
+      const exp = exportCampaign(name, campaigns[name]);
+      out[name] = exp[name];
+    }
+    return out;
+  }, [campaigns, campaignNames]);
 
   const exportedText = useMemo(
-    () => JSON.stringify(exported, null, 2),
-    [exported]
+    () => JSON.stringify(exportedAll, null, 2),
+    [exportedAll]
   );
+
+  const totalErrors = useMemo(() => {
+    return Object.values(allIssues).reduce(
+      (sum, arr) => sum + arr.filter((i) => i.type === 'error').length,
+      0
+    );
+  }, [allIssues]);
+
+  function updateRootNodes(updater: (prev: Record<string, CampaignNode>) => Record<string, CampaignNode>) {
+    setCampaigns((prev) => ({
+      ...prev,
+      [activeCampaign]: updater(prev[activeCampaign] || {}),
+    }));
+  }
 
   function select(pathArr: string[]) {
     setSelectedPath(pathToString(pathArr));
   }
 
+  function addCampaign() {
+    const base = 'NewCampaign';
+    let name = base;
+    let i = 1;
+    while (campaigns[name]) {
+      name = `${base}${i}`;
+      i++;
+    }
+    setCampaigns((prev) => ({
+      ...prev,
+      [name]: { '1': { ...defaultNode(), message: 'New message...' } },
+    }));
+    setActiveCampaign(name);
+    setSelectedPath('1');
+    showToast(`Created campaign: ${name}`);
+  }
+
+  function deleteCampaign(name: string) {
+    if (campaignNames.length <= 1) {
+      showToast('Cannot delete the last campaign.');
+      return;
+    }
+    if (!window.confirm(`Delete campaign "${name}"?`)) return;
+    setCampaigns((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+    if (activeCampaign === name) {
+      const remaining = campaignNames.filter((n) => n !== name);
+      setActiveCampaign(remaining[0] || '');
+      setSelectedPath('1');
+    }
+    showToast(`Deleted campaign: ${name}`);
+  }
+
+  function startRenameCampaign(name: string) {
+    setRenamingCampaign(name);
+    setRenameValue(name);
+  }
+
+  function finishRenameCampaign() {
+    if (!renamingCampaign) return;
+    const newName = renameValue.replace(/\s+/g, '').trim();
+    if (!newName) {
+      setRenamingCampaign(null);
+      return;
+    }
+    if (newName !== renamingCampaign && campaigns[newName]) {
+      showToast('Campaign name already exists.');
+      return;
+    }
+    if (newName !== renamingCampaign) {
+      setCampaigns((prev) => {
+        const next: Record<string, Record<string, CampaignNode>> = {};
+        for (const key of Object.keys(prev)) {
+          if (key === renamingCampaign) {
+            next[newName] = prev[key];
+          } else {
+            next[key] = prev[key];
+          }
+        }
+        return next;
+      });
+      if (activeCampaign === renamingCampaign) {
+        setActiveCampaign(newName);
+      }
+    }
+    setRenamingCampaign(null);
+  }
+
   function addTopLevel() {
-    setRootNodes((prev) => {
+    updateRootNodes((prev) => {
       const next = deepClone(prev);
       const normalized = normalizeTree(next);
       const newKey = String(Object.keys(normalized).length + 1);
@@ -117,7 +214,7 @@ export default function CampaignJsonBuilder() {
   }
 
   function addChildOption(pathArr: string[]) {
-    setRootNodes((prev) => {
+    updateRootNodes((prev) => {
       const next = deepClone(prev);
       ensureThen(next, pathArr);
       const parent = getNodeAt(next, pathArr);
@@ -141,7 +238,7 @@ export default function CampaignJsonBuilder() {
   function deleteNode(pathArr: string[]) {
     if (!window.confirm(`Delete node ${pathToString(pathArr)}?`)) return;
 
-    setRootNodes((prev) => {
+    updateRootNodes((prev) => {
       const next = deepClone(prev);
       deleteNodeAt(next, pathArr);
 
@@ -161,7 +258,7 @@ export default function CampaignJsonBuilder() {
 
   function updateSelected(updater: (n: CampaignNode) => CampaignNode) {
     const pathArr = selectedPath.split('.').filter(Boolean);
-    setRootNodes((prev) => {
+    updateRootNodes((prev) => {
       const next = deepClone(prev);
       setNodeAt(next, pathArr, (n) => updater({ ...(n || defaultNode()) }));
       return next;
@@ -202,7 +299,7 @@ export default function CampaignJsonBuilder() {
 
   function updateChildLabel(key: string, label: string) {
     const pathArr = selectedPath.split('.').filter(Boolean);
-    setRootNodes((prev) => {
+    updateRootNodes((prev) => {
       const next = deepClone(prev);
       const parent = getNodeAt(next, pathArr);
       if (!parent?.then?.[key]) return prev;
@@ -213,7 +310,7 @@ export default function CampaignJsonBuilder() {
 
   function removeChildOption(key: string) {
     const pathArr = selectedPath.split('.').filter(Boolean);
-    setRootNodes((prev) => {
+    updateRootNodes((prev) => {
       const next = deepClone(prev);
       const parent = getNodeAt(next, pathArr);
       if (!parent?.then) return prev;
@@ -244,25 +341,24 @@ export default function CampaignJsonBuilder() {
       const parsed = JSON.parse(text);
       const names = Object.keys(parsed || {});
       
-      if (names.length !== 1) {
-        throw new Error('Expected JSON with exactly one campaign root key.');
-      }
-      
-      const name = names[0];
-      const roots = parsed[name] as unknown;
-      
-      if (!roots || typeof roots !== 'object') {
-        throw new Error('Campaign root must be an object.');
+      if (names.length === 0) {
+        throw new Error('No campaigns found in JSON.');
       }
 
-      const cleaned = deepClone(roots as Record<string, CampaignNode>);
-      const norm = normalizeTree(cleaned);
+      const imported: Record<string, Record<string, CampaignNode>> = {};
+      for (const name of names) {
+        const roots = parsed[name];
+        if (!roots || typeof roots !== 'object') {
+          throw new Error(`Campaign "${name}" must be an object.`);
+        }
+        imported[name] = normalizeTree(deepClone(roots as Record<string, CampaignNode>));
+      }
 
-      setCampaignName(name);
-      setRootNodes(norm);
+      setCampaigns((prev) => ({ ...prev, ...imported }));
+      setActiveCampaign(names[0]);
       setSelectedPath('1');
       setImportOpen(false);
-      showToast('Imported successfully!');
+      showToast(`Imported ${names.length} campaign(s): ${names.join(', ')}`);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       alert(`Import failed: ${message}`);
@@ -275,98 +371,144 @@ export default function CampaignJsonBuilder() {
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="mx-auto max-w-[1600px] space-y-6">
         <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm ring-1 ring-slate-200">
-          <div className="flex flex-col lg:flex-row gap-6 lg:items-start lg:justify-between mb-8">
+          <div className="flex flex-col lg:flex-row gap-6 lg:items-start lg:justify-between mb-6">
             <div className="space-y-2">
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-                Campaign Response Builder
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
+                campaign2json
               </h1>
               <p className="text-slate-500 max-w-2xl leading-relaxed">
-                Design the conversation flow for your campaign. Link responses together to create a choice menu for students. When ready, copy the code for AWS Connect.
+                Build campaign response flows. Export JSON for AWS Connect.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3 shrink-0">
-              <Button onClick={addTopLevel} className="bg-slate-50 hover:bg-slate-100 ring-slate-200 shrink-0">
-                <Plus className="w-4 h-4 mr-1.5" />
-                Add Response
-              </Button>
               <Button onClick={() => setImportOpen(true)} className="bg-slate-50 hover:bg-slate-100 ring-slate-200 shrink-0">
                 <FolderOpen className="w-4 h-4 mr-1.5" />
-                Load Existing
+                Import
               </Button>
               <Button
                 className="bg-blue-600 text-white ring-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 shrink-0"
                 onClick={copyJson}
               >
                 <Copy className="w-4 h-4 mr-1.5" />
-                Copy for AWS Connect
+                Copy All
               </Button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end border-t border-slate-100 pt-8">
-            <div className="lg:col-span-5 space-y-2">
-              <label className="text-sm font-bold text-slate-700 ml-1 uppercase tracking-wider">Campaign ID (No spaces)</label>
-              <Input
-                value={campaignName}
-                onChange={(e) => setCampaignName(e.target.value.replace(/\s+/g, ''))}
-                placeholder="e.g., F25Withdrawal"
-                className="text-lg py-3 px-4 bg-slate-50 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500 transition-all"
-              />
-              <p className="text-[11px] text-slate-400 font-medium ml-1 italic">
-                Must match the <strong>CampaignId</strong> set in Student Success systems.
-              </p>
+          <div className="border-t border-slate-100 pt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Layers className="w-4 h-4 text-slate-400" />
+              <span className="text-sm font-bold text-slate-700 uppercase tracking-wider">Campaigns</span>
+              <Pill>{campaignNames.length}</Pill>
+              {totalErrors > 0 && (
+                <Pill tone="error">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {totalErrors} errors
+                </Pill>
+              )}
             </div>
-            
-            <div className="lg:col-span-3 space-y-2">
-              <label className="text-sm font-bold text-slate-700 ml-1 uppercase tracking-wider">Status</label>
-              <div className="flex flex-wrap gap-2 py-1">
-                <Pill>{Object.keys(rootNodes || {}).length} options</Pill>
+            <div className="flex flex-wrap items-center gap-2">
+              {campaignNames.map((name) => {
+                const hasErrors = (allIssues[name] || []).some((i) => i.type === 'error');
+                const isActive = name === activeCampaign;
+                const isRenaming = name === renamingCampaign;
+
+                return (
+                  <div
+                    key={name}
+                    className={`group flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-medium ring-1 transition cursor-pointer ${
+                      isActive
+                        ? 'bg-slate-900 text-white ring-slate-900'
+                        : 'bg-white ring-slate-200 hover:ring-slate-300 text-slate-700'
+                    }`}
+                    onClick={() => {
+                      if (!isRenaming) {
+                        setActiveCampaign(name);
+                        setSelectedPath('1');
+                      }
+                    }}
+                  >
+                    {hasErrors && (
+                      <AlertCircle className={`w-3.5 h-3.5 ${isActive ? 'text-red-400' : 'text-red-500'}`} />
+                    )}
+                    {isRenaming ? (
+                      <input
+                        type="text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value.replace(/\s+/g, ''))}
+                        onBlur={finishRenameCampaign}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') finishRenameCampaign();
+                          if (e.key === 'Escape') setRenamingCampaign(null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className="bg-transparent border-none outline-none w-32 text-sm font-medium"
+                      />
+                    ) : (
+                      <span onDoubleClick={() => startRenameCampaign(name)}>{name}</span>
+                    )}
+                    {isActive && campaignNames.length > 1 && !isRenaming && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteCampaign(name);
+                        }}
+                        className="ml-1 opacity-50 hover:opacity-100"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <Button
+                onClick={addCampaign}
+                className="bg-slate-50 hover:bg-slate-100 ring-slate-200 px-3 py-2"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-2">Double-click to rename. Click X to delete.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-4 rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200 h-full min-h-[400px] lg:min-h-[600px] flex flex-col">
+            <div className="mb-4 flex items-center justify-between shrink-0">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <GitBranch className="w-5 h-5 text-slate-400" />
+                {activeCampaign}
+              </h2>
+              <div className="flex items-center gap-2">
+                <Pill>{Object.keys(rootNodes).length} options</Pill>
                 <Pill tone={errorCount > 0 ? 'error' : 'neutral'}>
                   {errorCount === 0 ? (
-                    <span className="flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" /> All clear
-                    </span>
+                    <CheckCircle className="w-3 h-3" />
                   ) : (
                     <span className="flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> {errorCount} to fix
+                      <AlertCircle className="w-3 h-3" /> {errorCount}
                     </span>
                   )}
                 </Pill>
               </div>
             </div>
 
-            <div className="lg:col-span-4 space-y-2">
-              <label className="text-sm font-bold text-slate-700 ml-1 uppercase tracking-wider text-right block">Currently Editing</label>
-              <div className="bg-slate-900 text-white px-4 py-3 rounded-2xl text-sm font-mono flex items-center justify-between shadow-inner">
-                <span className="opacity-50">Path:</span>
-                <span className="font-bold text-blue-400">Response {selectedPath}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-4 rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200 h-full min-h-[400px] lg:min-h-[600px] flex flex-col">
-            <div className="mb-6 flex items-center justify-between shrink-0">
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <GitBranch className="w-5 h-5 text-slate-400" />
-                Conversation Flow
-              </h2>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">Visual Map</span>
+            <div className="mb-4">
+              <Button onClick={addTopLevel} className="w-full bg-slate-50 hover:bg-slate-100 ring-slate-200">
+                <Plus className="w-4 h-4 mr-1.5" />
+                Add Response
+              </Button>
             </div>
 
             <div className="space-y-3 overflow-y-auto flex-1 pr-2 custom-scrollbar">
-              {Object.keys(rootNodes || {}).length === 0 ? (
+              {Object.keys(rootNodes).length === 0 ? (
                 <div className="rounded-[1.5rem] border-2 border-dashed border-slate-100 p-12 text-center flex flex-col items-center gap-4">
                   <Inbox className="w-12 h-12 text-slate-300" />
                   <p className="text-sm text-slate-400 font-medium">
-                    Empty flow. <br />
-                    Start by adding a response.
+                    Empty campaign.<br />
+                    Add a response to start.
                   </p>
-                  <Button onClick={addTopLevel} className="text-blue-600 bg-blue-50 ring-blue-100">
-                    <Plus className="w-4 h-4 mr-1.5" />
-                    Add Response
-                  </Button>
                 </div>
               ) : (
                 Object.keys(rootNodes)
@@ -390,9 +532,11 @@ export default function CampaignJsonBuilder() {
             <div className="mb-6 flex items-center justify-between shrink-0">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <PencilLine className="w-5 h-5 text-slate-400" />
-                Workspace
+                Editor
               </h2>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">Edit Content</span>
+              <div className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg text-xs font-mono">
+                {activeCampaign} / {selectedPath}
+              </div>
             </div>
             
             <div className="bg-white rounded-[1.5rem]">
@@ -414,9 +558,9 @@ export default function CampaignJsonBuilder() {
             <div className="mb-6 flex items-center justify-between shrink-0">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-slate-400" />
-                Final Steps
+                Export
               </h2>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">Export</span>
+              <Pill>{campaignNames.length} campaigns</Pill>
             </div>
             
             <OutputPanel

@@ -2,6 +2,14 @@
 
 React UI for building campaign decision tree JSON configurations. Used with AWS Connect/Lex for SMS and voice campaigns.
 
+## Features
+
+- Multiple campaigns in one session
+- Visual tree editor
+- Real-time validation
+- Import/export JSON
+- Nested sub-menus
+
 ## Setup
 
 ```bash
@@ -22,7 +30,7 @@ npm run test
 
 ```json
 {
-  "CampaignName": {
+  "F25Withdrawal": {
     "1": {
       "message": "Response text",
       "risk": "high",
@@ -30,11 +38,16 @@ npm run test
     },
     "2": {
       "message": "Another response",
-      "risk": "low",
-      "needs_followup": false,
+      "risk": "low"
+    }
+  },
+  "S25Enrollment": {
+    "1": {
+      "message": "Enrollment response",
+      "risk": "medium",
       "then": {
-        "1": { "message": "Sub-option 1", "risk": "medium" },
-        "2": { "message": "Sub-option 2", "risk": "medium" }
+        "1": { "message": "Sub-option 1" },
+        "2": { "message": "Sub-option 2" }
       }
     }
   }
