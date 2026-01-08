@@ -29,7 +29,7 @@ export function TreeNode({
   return (
     <div className="w-full">
       <div
-        className={`flex items-start justify-between gap-3 rounded-2xl px-4 py-3 ring-1 transition cursor-pointer ${
+        className={`flex items-start justify-between gap-3 rounded-xl px-4 py-3 ring-1 transition cursor-pointer ${
           isSelected
             ? 'bg-slate-900 text-white ring-slate-900 shadow-md'
             : 'bg-white ring-slate-200 hover:ring-slate-300 hover:bg-slate-50'
@@ -75,18 +75,18 @@ export function TreeNode({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1 shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
           <IconButton
             title="Add follow-up question"
             onClick={() => onAddChild(path)}
-            className={`w-8 h-8 flex items-center justify-center ${isSelected ? 'ring-white/30 hover:ring-white/50 text-white bg-white/10' : 'bg-slate-50'}`}
+            className={isSelected ? 'ring-white/20 hover:ring-white/40 text-white bg-white/10' : 'bg-slate-50'}
           >
             <Plus className="w-4 h-4" />
           </IconButton>
           <IconButton
             title="Delete this response"
             onClick={() => onDelete(path)}
-            className={`w-8 h-8 flex items-center justify-center ${isSelected ? 'ring-white/30 hover:ring-white/50 text-white bg-white/10' : 'bg-slate-50'}`}
+            className={isSelected ? 'ring-white/20 hover:ring-white/40 text-white bg-white/10' : 'bg-slate-50'}
           >
             <Trash2 className="w-4 h-4" />
           </IconButton>
