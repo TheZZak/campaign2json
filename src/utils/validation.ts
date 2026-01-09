@@ -48,7 +48,7 @@ export function buildIssues(
         if (numeric[i] !== i + 1) {
           issues.push({
             type: 'warning',
-            msg: `${friendlyPath} options should be numbered 1, 2, 3... Click "Fix Numbers"`,
+            msg: `${friendlyPath} options should be numbered 1, 2, 3...`,
           });
           break;
         }

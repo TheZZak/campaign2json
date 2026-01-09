@@ -17,7 +17,6 @@ import {
   deepClone,
   pathToString,
   normalizeTree,
-  sortNumericKeys,
   getNodeAt,
   ensureThen,
   setNodeAt,
@@ -26,7 +25,6 @@ import {
 } from '../utils';
 import { exportCampaign } from '../utils/export';
 import { buildIssues } from '../utils/validation';
-import { makeChoicesBlock, replaceOrAppendChoices } from '../utils/choices';
 import { useToast } from '../hooks';
 import { Button, Pill } from './ui';
 import { TreeNode } from './TreeNode';
@@ -265,62 +263,6 @@ export default function CampaignJsonBuilder() {
     });
   }
 
-  function renumberSelectedChildren() {
-    updateSelected((n) => {
-      if (!n.then) return n;
-      n.then = normalizeTree(n.then);
-      return n;
-    });
-    showToast('Renumbered options.');
-  }
-
-  function syncChoicesIntoMessage() {
-    const pathArr = selectedPath.split('.').filter(Boolean);
-    const node = getNodeAt(rootNodes, pathArr);
-    const children = node?.then ? sortNumericKeys(normalizeTree(node.then)) : null;
-    
-    if (!children || Object.keys(children).length === 0) {
-      showToast('This node has no choices.');
-      return;
-    }
-
-    const labels = Object.keys(children).map(
-      (k) => children[k]._label || `Option ${k}`
-    );
-    const block = makeChoicesBlock(labels);
-
-    updateSelected((n) => {
-      n.message = replaceOrAppendChoices(n.message || '', block);
-      return n;
-    });
-
-    showToast('Inserted/updated Reply list in message.');
-  }
-
-  function updateChildLabel(key: string, label: string) {
-    const pathArr = selectedPath.split('.').filter(Boolean);
-    updateRootNodes((prev) => {
-      const next = deepClone(prev);
-      const parent = getNodeAt(next, pathArr);
-      if (!parent?.then?.[key]) return prev;
-      parent.then[key]._label = label;
-      return next;
-    });
-  }
-
-  function removeChildOption(key: string) {
-    const pathArr = selectedPath.split('.').filter(Boolean);
-    updateRootNodes((prev) => {
-      const next = deepClone(prev);
-      const parent = getNodeAt(next, pathArr);
-      if (!parent?.then) return prev;
-      delete parent.then[key];
-      parent.then = normalizeTree(parent.then);
-      return next;
-    });
-    showToast('Option removed.');
-  }
-
   async function copyJson() {
     try {
       await navigator.clipboard.writeText(exportedText);
@@ -543,13 +485,7 @@ export default function CampaignJsonBuilder() {
               <NodeEditor
                 node={selectedNode}
                 onUpdate={updateSelected}
-                onAddChild={() => addChildOption(selectedPath.split('.'))}
                 onDelete={() => deleteNode(selectedPath.split('.'))}
-                onRenumber={renumberSelectedChildren}
-                onSyncChoices={syncChoicesIntoMessage}
-                onJumpToChild={(k) => setSelectedPath(`${selectedPath}.${k}`)}
-                onRemoveChild={removeChildOption}
-                onUpdateChildLabel={updateChildLabel}
               />
             </div>
           </div>
